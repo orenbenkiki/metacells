@@ -66,10 +66,6 @@ In short: ``pip install metacells``.
 packages from the `conda-forge channel <https://anaconda.org/conda-forge/metacells>`_, which
 supports both Unix, Mac OS and Windows.
 
-.. todo::
-
-   Provide the Anaconda/Conda packages.
-
 For Unix like systems it is possible to install from source. For Windows this is overly complicated,
 and you are recommended to use the binary wheels. Also, this package is meant to be used in the
 context of the `scipy <http://scipy.org>`_ framework.
