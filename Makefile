@@ -43,36 +43,36 @@ test: build
 tox:
 	tox
 
-docs: docs/source/timing_script.rst
-	sphinx-build -W docs/source docs/build
+docs: sphinx/timing_script.rst
+	sphinx-build -W -b html sphinx sphinx/generated
 
-docs/source/timing_script.rst: \
-    docs/source/timing_script.part.1 \
-    docs/source/timing_script.part.2 \
-    docs/source/timing_script.part.3 \
-    docs/source/timing_script.part.4 \
+sphinx/timing_script.rst: \
+    sphinx/timing_script.part.1 \
+    sphinx/timing_script.part.2 \
+    sphinx/timing_script.part.3 \
+    sphinx/timing_script.part.4 \
     metacells/scripts/timing.py
-	( cat docs/source/timing_script.part.1 \
+	( cat sphinx/timing_script.part.1 \
 	; python metacells/scripts/timing.py --help 2>&1 \
 	| sed 's/timing.py/metacells_timing.py/;s/^/    /;s/`/``/g' \
-	; cat docs/source/timing_script.part.2 \
+	; cat sphinx/timing_script.part.2 \
 	; python metacells/scripts/timing.py combine --help 2>&1 \
 	| sed 's/timing.py/metacells_timing.py/;s/^/    /;s/`/``/g' \
-	; cat docs/source/timing_script.part.3 \
+	; cat sphinx/timing_script.part.3 \
 	; python metacells/scripts/timing.py sum --help 2>&1 \
 	| sed 's/timing.py/metacells_timing.py/;s/^/    /;s/`/``/g' \
-	; cat docs/source/timing_script.part.4 \
+	; cat sphinx/timing_script.part.4 \
 	; python metacells/scripts/timing.py flame --help 2>&1 \
 	| sed 's/timing.py/metacells_timing.py/;s/^/    /;s/`/``/g' \
-	; cat docs/source/timing_script.part.5 \
+	; cat sphinx/timing_script.part.5 \
 	) > $@
 
 rst: README.rst LICENSE.rst
 
-LICENSE.rst: docs/source/license.rst
+LICENSE.rst: sphinx/license.rst
 	cp $? $@
 
-README.rst: prefix.rst docs/source/intro.rst docs/source/install.rst references.rst LICENSE.rst
+README.rst: prefix.rst sphinx/intro.rst sphinx/install.rst references.rst LICENSE.rst
 	cat $? > $@
 
 dist:
