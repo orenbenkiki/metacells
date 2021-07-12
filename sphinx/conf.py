@@ -13,9 +13,7 @@
 import os
 import sys
 
-# sys.path.insert(0, os.path.abspath('..'))
-with open('../metacells/version.py') as file:
-    exec(compile(file.read(), 'metacells/version.py', 'exec'), globals())
+version = os.popen('cd ..; python setup.py --version').read().strip()
 
 # -- General configuration ------------------------------------------------
 
