@@ -64,7 +64,7 @@ and
 
 You can also access their very latest version in the `Github repository
 <https://github.com/tanaylab/metacells>`_ in:
-`Basic Metacells Vignette <https://github.com/tanaylab/metacells/blob/master/docs/source/Metacells_Vignette.rst>`_,
-`Manual Analysis Vignette <https://github.com/tanaylab/metacells/blob/master/docs/source/Manual_Analysis.rst>`_,
+`Basic Metacells Vignette <https://github.com/tanaylab/metacells/blob/master/sphinx/Metacells_Vignette.rst>`_,
+`Manual Analysis Vignette <https://github.com/tanaylab/metacells/blob/mastersphinx/Manual_Analysis.rst>`_,
 and
-`Seurat Analysis Vignette <https://github.com/tanaylab/metacells/blob/master/docs/source/Seurat_Analysis.rst>`_.
+`Seurat Analysis Vignette <https://github.com/tanaylab/metacells/blob/master/sphinx/Seurat_Analysis.rst>`_.
