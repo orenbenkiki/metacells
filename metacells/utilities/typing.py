@@ -591,7 +591,7 @@ def to_pandas_frame(
 
     sparse = maybe_sparse_matrix(matrix)
     if sparse is not None:
-        return pd.DataFrame.from_spmatrix(sparse, index=index, columns=columns)
+        return pd.DataFrame.sparse.from_spmatrix(sparse, index=index, columns=columns)
 
     return pd.DataFrame(to_numpy_matrix(matrix, only_extract=True),
                         index=index, columns=columns)

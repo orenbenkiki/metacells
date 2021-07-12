@@ -1,11 +1,12 @@
 Metacells Seurat Analysis Vignette
 ==================================
 
-This vignette demonstrates a possible Seurat analysis of the metacells
-generated from the basic metacells vignette. The
+This vignette demonstrates a possible
+`Seurat <https://satijalab.org/seurat/index.html>`__ analysis of the
+metacells generated from the basic `metacells
+vignette <Metacells_Vignette.html>`__. The
 `metacells_vignette.tgz <http://www.wisdom.weizmann.ac.il/~atanay/metac_data/metacells_vignette.tgz>`__
-file contains both the basic vignette jupyter notebook as well as this
-one.
+file contains the basic vignette jupyter notebook as well as this one.
 
 Preparation
 -----------
@@ -20,9 +21,9 @@ non-standard.
 .. code:: r
 
     library(dplyr)
-    library('Seurat')
-    library('SeuratData')
-    library('SeuratDisk')
+    library(Seurat)
+    library(SeuratData)
+    library(SeuratDisk)
 
 
 .. code::
@@ -113,7 +114,7 @@ purpose, without this property:
 .. code::
 
     An object of class Seurat
-    22617 features across 1542 samples within 1 assay
+    22617 features across 1546 samples within 1 assay
     Active assay: RNA (22617 features, 0 variable features)
 
 
@@ -131,7 +132,7 @@ we’ll just do some simple PCA analysis based on the Seurat
     pca <- NormalizeData(mdata) %>% FindVariableFeatures(verbose=FALSE) %>% ScaleData(verbose=FALSE) %>% RunPCA(verbose=FALSE)
     pca <- RunUMAP(pca, reduction = 'pca', dims = 1:30, assay = 'RNA',
                    reduction.name = 'rna.umap', reduction.key = 'rnaUMAP_', verbose=FALSE)
-    DimPlot(pca, reduction = 'rna.umap', label = FALSE, repel = TRUE, label.size = 2.5) + NoLegend()
+    DimPlot(pca, reduction = 'rna.umap') + NoLegend()
 
 
 .. code::

@@ -2,10 +2,11 @@ Metacells Manual Analysis Vignette
 ==================================
 
 This vignette demonstrates a possible manual analysis of the metacells
-generated from the basic metacells vignette. The
+generated from the basic `metacells
+vignette <Metacells_Vignette.html>`__. The
 `metacells_vignette.tgz <http://www.wisdom.weizmann.ac.il/~atanay/metac_data/metacells_vignette.tgz>`__
-file contains both the basic vignette jupyter notebook as well as this
-one.
+file contains the basic metacells vignette jupyter notebook as well
+as this one.
 
 Preparation
 -----------
@@ -28,12 +29,20 @@ using:
 
     Loading required package: anndata
 
+    Warning message:
+    “package ‘anndata’ was built under R version 4.1.0”
     Loading required package: chameleon
 
+    Warning message:
+    “package ‘chameleon’ was built under R version 4.1.0”
     Loading required package: pheatmap
 
+    Warning message:
+    “package ‘pheatmap’ was built under R version 4.1.0”
     Loading required package: pracma
 
+    Warning message:
+    “package ‘pracma’ was built under R version 4.1.0”
 
 
 Getting the raw data
@@ -46,7 +55,6 @@ forbidden genes for use below.
 .. code:: r
 
     mdata <- anndata::read_h5ad('metacells.h5ad')
-    forbidden_genes <- as.character(t(read.table('forbidden_gene_names.txt')))
 
 Metacells Marker Genes
 ----------------------
@@ -101,7 +109,7 @@ are most entriched in it compated to the overall population:
 
 .. code::
 
-    [1] 84
+    [1] 72
 
 
 This gave us 84 genes to look at (you can get more or less genes
@@ -180,7 +188,7 @@ reasonable quality clusters.
     .list-inline>li {display: inline-block}
     .list-inline>li:not(:last-child)::after {content: "\00b7"; padding: 0 .5ex}
     </style>
-    <ol class=list-inline><li>1542</li><li>622</li></ol>
+    <ol class=list-inline><li>1546</li><li>724</li></ol>
 
 
 
@@ -212,7 +220,7 @@ computed by the basic metacells vignette:
 .. code:: r
 
     color_of_metacells <- color_of_clusters[cluster_of_metacells]
-    plot(mdata$obs$umap_x, mdata$obs$umap_y, col=color_of_metacells, pch=19)
+    plot(mdata$obs$umap_x, mdata$obs$umap_y, col=color_of_metacells, pch=19, cex=3)
 
 
 
@@ -230,14 +238,53 @@ a few clusters cover what we may consider to be a single behavior
 (possibly artificially quantizing a smooth gradient into distinct
 steps).
 
-Analysis
---------
+Gene-Gene Analysis
+------------------
 
-The actual analysis is best done using an interactive tool allowing for
-flexible investigation of the structure of the data, starting with the
-above computed clusters. An example of such a manual tool is **TODO:
-MCView**, which can easily import the ``metacells.h5ad`` and the
-``cluster-colors.csv`` files and perform this analysis.
+An effective analysis tool is a gene-gene scatter plot where each point
+is a metacell, typically colored using some per-metacell annotations
+(here we’ll use the above clusters). These gene-gene scatter plots allow
+visualizing distinct and gradients of cell behaviors. For example, the
+following will visualize the gradient of T-cells from naive to
+effectors, using the GNLY and GZMK gene expression levels:
+
+.. code:: r
+
+    GNLY <- log_fractions[,'GNLY']
+    GZMK <- log_fractions[,'GZMK']
+    plot(GNLY, GZMK, col=color_of_metacells, pch=19, cex=4)
+
+
+
+.. image:: output_21_0.png
+   :width: 1380px
+   :height: 780px
+
+
+Full Analysis and MCView
+------------------------
+
+A full analysis requires using multiple gene-gene plots to identify
+marker genes and using them to annotate the metacells with meaningful
+type labels. Such analysis is labor intensive and is best done using a
+supporting tool. Sometimes during such analysis one discovers a lateral
+gene module which threw off the original metacell computation; this
+requires adding the relevant genes to the forbidden genes list (or in
+extreme cases, the excluded genes list), and recomputing the metacells,
+which then requires re-annotating the new metacells. Here again a
+supporting tool can help in minimizing the effort of annotating the new
+metacells using the insights gained from analysing the original
+metacells.
+
+An example of such a manual tool is
+`MCView <https://tanaylab.github.io/MCView>`__, which provides a
+convenient GUI for performing such a fuller annalysis. It is convenient
+to provide this tool with the clusters we computed above to use as a
+starting point for the analysis. We’ll therefore export the clusters
+data by re-writing the ``metacells.h5ad`` file to include the
+per-metacell cluster annotations, and also write a CSV file specifying
+the cluster colors; these two files can then be imported into MCView for
+further analysis.
 
 .. code:: r
 

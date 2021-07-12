@@ -6,10 +6,10 @@ analyze scRNA-seq data. It is expected that these steps will be modified
 when analyzing other data sets, and points where such modifications are
 likely will be called out.
 
-You can download a working version of this vignette from
+You can download a working Jupyter notebook version of this vignette
+from
 `metacells_vignette.tgz <http://www.wisdom.weizmann.ac.il/~atanay/metac_data/metacells_vignette.tgz>`__.
-This will include all the Jupyter notebook files and the two associated
-text files which are loaded in the code below.
+This will include all the Jupyter notebook files.
 
 Preparation
 -----------
@@ -109,24 +109,13 @@ Excluding genes by name
 
 Some genes are known to be detrimental for the analysis and should be
 excluded from the clean data based on their name. The poster child for
-such genes are mitochondrial genes. We typically create a list of such
-genes in an ``excluded_gene_names.txt`` file, one gene name per line,
-and load it from there. There should have been such a file included in
-the archive containing this notebook.
-
-**TODO:** How to create an initial list of excluded gene names, and how
-to refine it during the iterative analysis process.
+such genes are mitochondrial genes which we exclude using a pattern (all
+genes whose name starts with ``MT-``).
 
 .. code:: ipython3
 
-    excluded_gene_names = open('excluded_gene_names.txt').read().split('\n')[:-1]
-    print(sorted(excluded_gene_names))
-
-
-.. code::
-
-    ['IGHMBP2', 'IGLL1', 'IGLL5', 'IGLON5', 'MT-ATP6', 'MT-ATP8', 'MT-CO1', 'MT-CO2', 'MT-CO3', 'MT-CYB', 'MT-ND1', 'MT-ND2', 'MT-ND3', 'MT-ND4', 'MT-ND4L', 'MT-ND5', 'MT-ND6', 'NEAT1', 'TMSB10', 'TMSB4X']
-
+    excluded_gene_names = ['IGHMBP2', 'IGLL1', 'IGLL5', 'IGLON5', 'NEAT1', 'TMSB10', 'TMSB4X']
+    excluded_gene_patterns = ['MT-.*']
 
 Excluding genes by their expression
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -154,6 +143,7 @@ masks of your own based on your own criteria.
 
     mc.pl.analyze_clean_genes(raw,
                               excluded_gene_names=excluded_gene_names,
+                              excluded_gene_patterns=excluded_gene_patterns,
                               random_seed=123456)
 
 
@@ -360,6 +350,175 @@ data we’ll be analyzing.
     set PBMC.clean.var[full_gene_index]: 22617 int64s
 
 
+Initial forbidden genes
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Some of the genes that are included in the clean data are “lateral”,
+that is, indicate some real biolgical behavior such as cell cycle, but
+are irrelevant to the biological questions we are interested in. Such
+genes shouldn’t be completely excluded - for example they are used to
+detect outliers. That is, we will still make sure the level of the
+expression of these genes is consistent for all the cells (e.g., the
+cells will be of the same cell cycle stage), but we do not want the
+algorithm to create metacells based on these genes (e.g., creating a
+metacell with a strong consistent S-state signature, but mixing up
+weakly different cell behaviors which we are trying to isolate).
+
+To ensure this, we can specify (again by name or by pattern) “forbidden
+genes”, that is, genes which must not be used as “feature genes”. Coming
+up with the list of forbidden genes for a new data set is not trivial,
+and in general may require an iterative approach, where we generate
+metacells, understand their behavior, identify additional lateral gene
+modules we’d like to add to the list, and then recompute the metacells.
+
+To kickstart this process, we can start with a few “known suspect”
+genes, and (manually) consider genes which are related (correlated) to
+them. We correlate all the (interesting) genes with each other (using a
+random subset of the cells for efficiency), cluster the genes using
+these correlations, split the genes into modules with some maximal
+number of genes in each, and finally look at each cluster containing any
+of the suspect genes to decide which genes to add to the list.
+
+.. code:: ipython3
+
+    suspect_gene_names = ['PCNA', 'MKI67', 'TOP2A', 'HIST1H1D',
+                          'FOS', 'JUN', 'HSP90AB1', 'HSPA1A',
+                          'ISG15', 'WARS' ]
+    suspect_gene_patterns = [ 'MCM[0-9]', 'SMC[0-9]', 'IFI.*' ]
+    suspect_genes_mask = mc.tl.find_named_genes(clean, names=suspect_gene_names,
+                                                patterns=suspect_gene_patterns)
+    suspect_gene_names = sorted(clean.var_names[suspect_genes_mask])
+
+This gave us a list of 49 suspect genes. To look for additional
+candidates, let us first look for the (coarse) relationship between
+“interesting” genes. This isn’t meant to be detailed, we are looking for
+lateral genes which are strongly correlated with our suspects, so the
+code samples a subset of the cells and ignores genes which are too weak
+to matter.
+
+.. code:: ipython3
+
+    mc.pl.relate_genes(clean, random_seed=123456)
+
+
+.. code::
+
+    set PBMC.clean.var[related_genes_module]: 21549 outliers (95.28%) out of 22617 int32 elements with 73 groups with mean size 14.63
+    set PBMC.clean.varp[related_genes_similarity]: 22617 X 22617 float32s
+
+
+This discovered 73 gene modules with ~15 genes in each one. Let us look
+at the modules containing suspect genes:
+
+.. code:: ipython3
+
+    module_of_genes = clean.var['related_genes_module']
+    suspect_gene_modules = np.unique(module_of_genes[suspect_genes_mask])
+    suspect_gene_modules = suspect_gene_modules[suspect_gene_modules >= 0]
+    print(suspect_gene_modules)
+
+
+.. code::
+
+    [ 4  5 14 19 21 35 42 47 52 54 65 68]
+
+
+For each such module, let us look at the genes it contains and the
+similarity between them:
+
+.. code:: ipython3
+
+    similarity_of_genes = mc.ut.get_vv_frame(clean, 'related_genes_similarity')
+    for gene_module in suspect_gene_modules:
+        module_genes_mask = module_of_genes == gene_module
+        similarity_of_module = similarity_of_genes.loc[module_genes_mask, module_genes_mask]
+        similarity_of_module.index = \
+        similarity_of_module.columns = [
+            '(*) ' + name if name in suspect_gene_names else name
+            for name in similarity_of_module.index
+        ]
+        ax = plt.axes()
+        sb.heatmap(similarity_of_module, vmin=0, vmax=1, ax=ax, cmap="YlGnBu")
+        ax.set_title(f'Gene Module {gene_module}')
+        plt.show()
+
+
+
+.. image:: output_34_0.png
+
+
+
+.. image:: output_34_1.png
+
+
+
+.. image:: output_34_2.png
+
+
+
+.. image:: output_34_3.png
+
+
+
+.. image:: output_34_4.png
+
+
+
+.. image:: output_34_5.png
+
+
+
+.. image:: output_34_6.png
+
+
+
+.. image:: output_34_7.png
+
+
+
+.. image:: output_34_8.png
+
+
+
+.. image:: output_34_9.png
+
+
+
+.. image:: output_34_10.png
+
+
+
+.. image:: output_34_11.png
+
+
+We can now extend the list of forbidden genes to include additional
+genes using these modules. Note we’d rather err on the side of caution
+and not forbid genes needlessly, since we expect the metacell analysis
+to help us expose any remaining genes we have missed. That said, thiw
+will require us to regenerate the metacells with the expanded forbidden
+genes list.
+
+For simplicity, we’ll simply forbid all the original suspect genes as
+well as all the genes in the strong modules 4, 5, 47, 52 and 68. This
+gives us a total of 106 initially forbidden genes:
+
+.. code:: ipython3
+
+    forbidden_genes_mask = suspect_genes_mask
+    for gene_module in [4, 5, 47, 52]:
+        module_genes_mask = module_of_genes == gene_module
+        forbidden_genes_mask |= module_genes_mask
+    forbidden_gene_names = sorted(clean.var_names[forbidden_genes_mask])
+    print(len(forbidden_gene_names))
+    print(' '.join(forbidden_gene_names))
+
+
+.. code::
+
+    106
+    AGPAT2 C19orf38 CALM2 CAMK1 CD68 CEBPB CFD CFP CLIC1 COTL1 CPPED1 CSF3R CTSS DYNLL1 FCER1A FCN1 FOS GPX1 GSN GSTO1 GSTP1 H1FX HCK HIST1H1C HIST1H1D HIST1H4C HSP90AB1 HSPA1A ICAM4 IFI16 IFI27 IFI27L1 IFI27L2 IFI30 IFI35 IFI44 IFI44L IFI6 IFIH1 IFIT1 IFIT1B IFIT2 IFIT3 IFIT5 IFITM1 IFITM10 IFITM2 IFITM3 IFITM5 IGSF6 ISG15 JUN LGALS3 LGALS9 LILRB2 LRRC25 LXN MCM10 MCM2 MCM3 MCM3AP MCM3AP-AS1 MCM4 MCM5 MCM6 MCM7 MCM8 MCM9 MKI67 MS4A7 MTPN NCF2 PCNA PHTF1 PILRA PLAUR PSAP RGS2 RP11-290F20.3 RPL39 RPS27 S100A11 SAT1 SERPINA1 SERPINB1 SLC16A3 SMC1A SMC1B SMC2 SMC3 SMC4 SMC5 SMC5-AS1 SMC6 SMCO4 STMN1 STXBP2 TESC TMEM176A TMEM176B TOP2A TSPAN2 TYMP VIM WARS ZNF593
+
+
 Computing the metacells
 -----------------------
 
@@ -369,42 +528,9 @@ the metacells.
 Main parameters
 ~~~~~~~~~~~~~~~
 
-There are many parameters we can tweak (see
-``mc.pl.divide_and_conquer_pipeline``). Here we’ll just discuss
-controlling the main ones.
-
-Forbidden genes
-^^^^^^^^^^^^^^^
-
-The ``forbidden_gene_names`` forbids genes from being used as feature
-genes. Such genes are still used to detect outliers; that is, while each
-metacell is still expected to contain cells with the “same level of
-expression” of these genes, we will not try to create metacells which
-are distinct from the rest of the population by this expression level.
-
-This is used to prevent “lateral” or “irrelevant” genes to influence the
-metacell creation; the poster child for such genes is cell cycle
-(ribosomal) genes, as we are trying to create metacells with the same
-“cell type” rather than the same “cell cycle state”.
-
-We typically create a list of such genes in a
-``forbidden_gene_names.txt`` file, one gene name per line, and load it
-from there. There should have been such a file included in the archive
-containing this notebook.
-
-**TODO**: How to create an initial list of forbidden gene names, and how
-to refine it during the iterative analysis process.
-
-.. code:: ipython3
-
-    forbidden_gene_names = open('forbidden_gene_names.txt').read().split('\n')[:-1]
-    print(len(forbidden_gene_names))
-
-
-.. code::
-
-    4037
-
+There are many parameters other than the forbidden genes list that we
+can tweak (see ``mc.pl.divide_and_conquer_pipeline``). Here we’ll just
+discuss controlling the main ones.
 
 Reproducibility
 ^^^^^^^^^^^^^^^
@@ -412,7 +538,8 @@ Reproducibility
 The ``random_seed`` must be non-zero to ensure reprodibility. Note that
 even though the implementation is parallel for efficiency, the results
 are still reprodicible given the same random seed (in contrast to the
-``umap`` package).
+``umap`` package where you need to specify an additional flag for
+reproducible results).
 
 Target Metacell size
 ^^^^^^^^^^^^^^^^^^^^
@@ -446,39 +573,43 @@ cores on your server. For ~2 million cells this takes ~10 minutes on a
 
 .. code::
 
+    /home/obk/.local/lib/python3.7/site-packages/anndata/_core/anndata.py:1094: FutureWarning: is_categorical is deprecated and will be removed in a future version.  Use is_categorical_dtype instead
+      if not is_categorical(df_full[k]):
+    /home/obk/.local/lib/python3.7/site-packages/pandas/core/arrays/categorical.py:2487: FutureWarning: The `inplace` parameter in pandas.Categorical.remove_unused_categories is deprecated and will be removed in a future version.
+      res = method(*args, **kwargs)
     set PBMC.clean.var[rare_gene_module_0]: 4 true (0.01769%) out of 22617 bools
     set PBMC.clean.var[rare_gene_module_1]: 29 true (0.1282%) out of 22617 bools
     set PBMC.clean.var[rare_gene]: 33 true (0.1459%) out of 22617 bools
-    set PBMC.clean.obs[cells_rare_gene_module]: 149085 outliers (99.51%) out of 149825 int32 elements with 2 groups with mean size 370
-    set PBMC.clean.obs[rare_cell]: 740 true (0.4939%) out of 149825 bools
+    set PBMC.clean.obs[cells_rare_gene_module]: 149102 outliers (99.52%) out of 149825 int32 elements with 2 groups with mean size 361.5
+    set PBMC.clean.obs[rare_cell]: 723 true (0.4826%) out of 149825 bools
     /home/obk/.local/lib/python3.7/site-packages/anndata/_core/anndata.py:1094: FutureWarning: is_categorical is deprecated and will be removed in a future version.  Use is_categorical_dtype instead
       if not is_categorical(df_full[k]):
     /home/obk/.local/lib/python3.7/site-packages/pandas/core/arrays/categorical.py:2487: FutureWarning: The `inplace` parameter in pandas.Categorical.remove_unused_categories is deprecated and will be removed in a future version.
       res = method(*args, **kwargs)
     set PBMC.clean.uns[pre_directs]: 16
-    set PBMC.clean.uns[directs]: 24
-    set PBMC.clean.var[pre_high_total_gene]: 8315 positive (36.76%) out of 22617 int32s
-    set PBMC.clean.var[high_total_gene]: 10398 positive (45.97%) out of 22617 int32s
-    set PBMC.clean.var[pre_high_relative_variance_gene]: 11682 positive (51.65%) out of 22617 int32s
-    set PBMC.clean.var[high_relative_variance_gene]: 13256 positive (58.61%) out of 22617 int32s
-    set PBMC.clean.var[forbidden_gene]: 4037 true (17.85%) out of 22617 bools
-    set PBMC.clean.var[pre_feature_gene]: 427 positive (1.888%) out of 22617 int32s
-    set PBMC.clean.var[feature_gene]: 622 positive (2.75%) out of 22617 int32s
-    set PBMC.clean.var[pre_gene_deviant_votes]: 2403 positive (10.62%) out of 22617 int32s
-    set PBMC.clean.var[gene_deviant_votes]: 2359 positive (10.43%) out of 22617 int32s
-    set PBMC.clean.obs[pre_cell_directs]: 149825 int32s with mean 1.038
-    set PBMC.clean.obs[cell_directs]: 149825 int32s with mean 1.031
+    set PBMC.clean.uns[directs]: 25
+    set PBMC.clean.var[pre_high_total_gene]: 8318 positive (36.78%) out of 22617 int32s
+    set PBMC.clean.var[high_total_gene]: 10468 positive (46.28%) out of 22617 int32s
+    set PBMC.clean.var[pre_high_relative_variance_gene]: 11732 positive (51.87%) out of 22617 int32s
+    set PBMC.clean.var[high_relative_variance_gene]: 13356 positive (59.05%) out of 22617 int32s
+    set PBMC.clean.var[forbidden_gene]: 106 true (0.4687%) out of 22617 bools
+    set PBMC.clean.var[pre_feature_gene]: 476 positive (2.105%) out of 22617 int32s
+    set PBMC.clean.var[feature_gene]: 724 positive (3.201%) out of 22617 int32s
+    set PBMC.clean.var[pre_gene_deviant_votes]: 2393 positive (10.58%) out of 22617 int32s
+    set PBMC.clean.var[gene_deviant_votes]: 2364 positive (10.45%) out of 22617 int32s
+    set PBMC.clean.obs[pre_cell_directs]: 149825 int32s with mean 1.041
+    set PBMC.clean.obs[cell_directs]: 149825 int32s with mean 1.032
     set PBMC.clean.obs[pre_pile]: 0 outliers (0%) out of 149825 int32 elements with 18 groups with mean size 8324
-    set PBMC.clean.obs[pile]: 0 outliers (0%) out of 149825 int32 elements with 24 groups with mean size 6243
-    set PBMC.clean.obs[pre_candidate]: 0 outliers (0%) out of 149825 int32 elements with 1728 groups with mean size 86.7
-    set PBMC.clean.obs[candidate]: 0 outliers (0%) out of 149825 int32 elements with 1569 groups with mean size 95.49
+    set PBMC.clean.obs[pile]: 0 outliers (0%) out of 149825 int32 elements with 25 groups with mean size 5993
+    set PBMC.clean.obs[pre_candidate]: 0 outliers (0%) out of 149825 int32 elements with 1666 groups with mean size 89.93
+    set PBMC.clean.obs[candidate]: 0 outliers (0%) out of 149825 int32 elements with 1575 groups with mean size 95.13
     set PBMC.clean.obs[pre_cell_deviant_votes]: 0 positive (0%) out of 149825 int32s
-    set PBMC.clean.obs[cell_deviant_votes]: 764 positive (0.5099%) out of 149825 int32s
+    set PBMC.clean.obs[cell_deviant_votes]: 741 positive (0.4946%) out of 149825 int32s
     set PBMC.clean.obs[pre_dissolved]: 0 true (0%) out of 149825 bools
-    set PBMC.clean.obs[dissolved]: 150 true (0.1001%) out of 149825 bools
-    set PBMC.clean.obs[pre_metacell]: 0 outliers (0%) out of 149825 int32 elements with 1702 groups with mean size 88.03
-    set PBMC.clean.obs[metacell]: 914 outliers (0.61%) out of 149825 int32 elements with 1542 groups with mean size 96.57
-    set PBMC.clean.obs[outlier]: 914 true (0.61%) out of 149825 bools
+    set PBMC.clean.obs[dissolved]: 0 true (0%) out of 149825 bools
+    set PBMC.clean.obs[pre_metacell]: 0 outliers (0%) out of 149825 int32 elements with 1630 groups with mean size 91.92
+    set PBMC.clean.obs[metacell]: 741 outliers (0.4946%) out of 149825 int32 elements with 1546 groups with mean size 96.43
+    set PBMC.clean.obs[outlier]: 741 true (0.4946%) out of 149825 bools
 
 
 This has written many annotations for each cell (observation), the most
@@ -497,11 +628,11 @@ observation is a metacell:
 
     set PBMC.metacells.var[excluded_gene]: 0 true (0%) out of 22617 bools
     set PBMC.metacells.var[clean_gene]: 22617 true (100%) out of 22617 bools
-    set PBMC.metacells.var[forbidden_gene]: 4037 true (17.85%) out of 22617 bools
-    set PBMC.metacells.var[pre_feature_gene]: 427 positive (1.888%) out of 22617 int32s
-    set PBMC.metacells.var[feature_gene]: 622 positive (2.75%) out of 22617 int32s
-    set PBMC.metacells.obs[pile]: 1542 int32s
-    set PBMC.metacells.obs[candidate]: 1542 int32s
+    set PBMC.metacells.var[forbidden_gene]: 106 true (0.4687%) out of 22617 bools
+    set PBMC.metacells.var[pre_feature_gene]: 476 positive (2.105%) out of 22617 int32s
+    set PBMC.metacells.var[feature_gene]: 724 positive (3.201%) out of 22617 int32s
+    set PBMC.metacells.obs[pile]: 1546 int32s
+    set PBMC.metacells.obs[candidate]: 1546 int32s
 
 
 Visualizing the Metacells
@@ -517,21 +648,22 @@ single-threaded implementation.
 
 .. code:: ipython3
 
-    mc.pl.compute_umap_by_features(metacells, min_dist=2.0, random_seed=123456)
+    mc.pl.compute_umap_by_features(metacells, max_top_feature_genes=1000,
+                                   min_dist=2.0, random_seed=123456)
 
 
 .. code::
 
-    set PBMC.metacells.var[top_feature_gene]: 622 true (2.75%) out of 22617 bools
-    set PBMC.metacells.obsp[obs_balanced_ranks]: 14049 nonzero (0.5908%) out of 2377764 elements
-    set PBMC.metacells.obsp[obs_pruned_ranks]: 5326 nonzero (0.224%) out of 2377764 elements
-    set PBMC.metacells.obsp[obs_outgoing_weights]: 5326 nonzero (0.224%) out of 2377764 elements
+    set PBMC.metacells.var[top_feature_gene]: 724 true (3.201%) out of 22617 bools
+    set PBMC.metacells.obsp[obs_balanced_ranks]: 14468 nonzero (0.6053%) out of 2390116 elements
+    set PBMC.metacells.obsp[obs_pruned_ranks]: 5500 nonzero (0.2301%) out of 2390116 elements
+    set PBMC.metacells.obsp[obs_outgoing_weights]: 5500 nonzero (0.2301%) out of 2390116 elements
     /home/obk/.local/lib/python3.7/site-packages/umap/umap_.py:1330: RuntimeWarning: divide by zero encountered in power
       return 1.0 / (1.0 + a * x ** (2 * b))
     /home/obk/.local/lib/python3.7/site-packages/umap/umap_.py:1736: UserWarning: using precomputed metric; transform will be unavailable for new data and inverse_transform will be unavailable for all data
       "using precomputed metric; transform will be unavailable for new data and inverse_transform "
-    set PBMC.metacells.obs[umap_x]: 1542 float32s
-    set PBMC.metacells.obs[umap_y]: 1542 float32s
+    set PBMC.metacells.obs[umap_x]: 1546 float32s
+    set PBMC.metacells.obs[umap_y]: 1546 float32s
 
 
 This filled in ``umap_x`` and ``umap_y`` per-metacell (observation)
@@ -549,7 +681,7 @@ projection:
 
 
 
-.. image:: output_39_0.png
+.. image:: output_47_0.png
 
 
 We can also visualize the (skeleton) KNN graph on top of the UMAP. Long
@@ -563,6 +695,7 @@ out the short edges:
 .. code:: ipython3
 
     umap_edges = sp.coo_matrix(mc.ut.get_oo_proper(metacells, 'obs_outgoing_weights'))
+    min_long_edge_size = 4
     sb.set()
     plot = sb.scatterplot(x=umap_x, y=umap_y)
     for (source_index, target_index, weight) \
@@ -571,14 +704,14 @@ out the short edges:
         target_x = umap_x[target_index]
         source_y = umap_y[source_index]
         target_y = umap_y[target_index]
-        if hypot(target_x - source_x, target_y - source_y) > 4:
+        if hypot(target_x - source_x, target_y - source_y) >= min_long_edge_size:
             plt.plot([source_x, target_x], [source_y, target_y],
                      linewidth=weight * 2, color='indigo')
     plt.show()
 
 
 
-.. image:: output_41_0.png
+.. image:: output_49_0.png
 
 
 Further analysis
@@ -620,6 +753,13 @@ Thus, the best thing we can do now is to save the data, and feed it to a
 separate further data analysis pipeline. To import the data into Seurat,
 we first need to delete the special ``__name__`` property, since for
 some reason it breaks the Seurat importer.
+
+The `manual analysis vignette <Manual_Analysis.html>`__ demonstrates
+manual analysis of the data (based on the
+`MCView <https://tanaylab.github.io/MCView>`__ tool), and the `seurat
+analysis vignette <Seurat_Analysis.html>`__ demonstrates importing the
+metacells into `Seurat <https://satijalab.org/seurat/index.html>`__ for
+further analysis there.
 
 .. code:: ipython3
 

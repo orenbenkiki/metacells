@@ -28,9 +28,9 @@ def extract_feature_data(
     downsample_min_samples: float = pr.feature_downsample_min_samples,
     downsample_min_cell_quantile: float = pr.feature_downsample_min_cell_quantile,
     downsample_max_cell_quantile: float = pr.feature_downsample_max_cell_quantile,
-    min_gene_relative_variance: float = pr.feature_min_gene_relative_variance,
-    min_gene_total: int = pr.feature_min_gene_total,
-    min_gene_top3: int = pr.feature_min_gene_top3,
+    min_gene_relative_variance: Optional[float] = pr.feature_min_gene_relative_variance,
+    min_gene_total: Optional[int] = pr.feature_min_gene_total,
+    min_gene_top3: Optional[int] = pr.feature_min_gene_top3,
     forbidden_gene_names: Optional[Collection[str]] = None,
     forbidden_gene_patterns: Optional[Collection[Union[str, Pattern]]] = None,
     random_seed: int = 0,
@@ -102,17 +102,26 @@ def extract_feature_data(
                         downsample_max_cell_quantile=downsample_max_cell_quantile,
                         random_seed=random_seed)
 
-    tl.find_high_topN_genes(adata, 'downsampled', topN=3,
-                            min_gene_topN=min_gene_top3)
+    var_masks = []
 
-    tl.find_high_total_genes(adata, 'downsampled',
-                             min_gene_total=min_gene_total)
+    if min_gene_top3 is not None:
+        var_masks.append('high_top3_gene')
+        tl.find_high_topN_genes(adata, 'downsampled', topN=3,
+                                min_gene_topN=min_gene_top3)
 
-    tl.find_high_relative_variance_genes(adata, 'downsampled',
-                                         min_gene_relative_variance=min_gene_relative_variance)
+    if min_gene_total is not None:
+        var_masks.append('high_total_gene')
+        tl.find_high_total_genes(adata, 'downsampled',
+                                 min_gene_total=min_gene_total)
+
+    if min_gene_relative_variance is not None:
+        var_masks.append('high_relative_variance_gene')
+        tl.find_high_relative_variance_genes(adata, 'downsampled',
+                                             min_gene_relative_variance=min_gene_relative_variance)
 
     if forbidden_gene_names is not None \
             or forbidden_gene_patterns is not None:
+        var_masks.append('~forbidden_gene')
         tl.find_named_genes(adata,
                             to='forbidden_gene',
                             names=forbidden_gene_names,
@@ -121,10 +130,7 @@ def extract_feature_data(
     results = tl.filter_data(adata, name=name, top_level=top_level,
                              track_var='full_gene_index',
                              mask_var='feature_gene',
-                             var_masks=['high_total_gene',
-                                        'high_top3_gene',
-                                        'high_relative_variance_gene',
-                                        '~forbidden_gene'])
+                             var_masks=var_masks)
 
     if results is None:
         raise ValueError('Empty feature data, giving up')
